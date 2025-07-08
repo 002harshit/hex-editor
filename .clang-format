@@ -1,0 +1,9 @@
+---
+IndentWidth: 4
+TabWidth: 4
+ColumnLimit: 0
+UseTab: Always
+BreakBeforeBraces: Linux
+SeparateDefinitionBlocks: Always
+AllowShortFunctionsOnASingleLine: false
+BasedOnStyle: InheritParentConfig
