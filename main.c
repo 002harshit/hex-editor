@@ -1,20 +1,11 @@
-#include <string.h>
 #define IVY_IMPL
 #include "ivy/ivy.h"
 #include "ivy/ivy_math.h"
+
 #define RC_TGA_IMPL
 #include "rc_tga.h"
 
-// -----------------------------------------------------------------------------------
-#include <time.h>
-
-void sleep_ms(int milliseconds){
-    struct timespec ts;
-    ts.tv_sec = milliseconds / 1000;
-    ts.tv_nsec = (milliseconds % 1000) * 1000000;
-    nanosleep(&ts, NULL);
-}
-// -----------------------------------------------------------------------------------
+#include <string.h>
 
 typedef struct {
 	int width, height;
@@ -133,51 +124,63 @@ void draw_rect_line(int rx, int ry, int rw, int rh, pixel_t color)
 }
 
 int scroll_y = 0;
-int n = 0;
+int n_line = 0;
+int n_column = 0;
 char* buf;
 size_t buf_size;
+size_t selected_index = 0;
+int font_scale = 2;
+int padding = 30;
 #define ADDRESS_SIZE 8
 int count_hex_per_line(float font_scale, float padding, float avaliable_width)
 {
-	int n = (avaliable_width - 4 * padding) / (24 * font_scale + padding);
-	return n;
+	int n_line = (avaliable_width - 4 * padding) / (24 * font_scale + padding);
+	return n_line;
 }
 
-void draw_address_space(int font_scale, int padding, int n)
+int count_hex_per_column(float font_scale, float padding, float avaliable_height)
 {
-	int addr_curr = scroll_y * n;
+	int n_column = (avaliable_height - padding * 2) / (font_scale * 8);
+	return n_column;
+}
+
+void draw_address_space(int font_scale, int padding, int n_line)
+{
+	int addr_curr = scroll_y;
 	char buf[ADDRESS_SIZE + 1];
 	int x = padding;
 	draw_rect(padding / 2, padding / 2, 8 * font_scale * ADDRESS_SIZE + padding, wnd.pixels.height - padding, 0x214421);
 	for (int y = padding; y + font_scale * 8 < wnd.pixels.height; y += font_scale * 8) 
 	{
 		size_t buf_size = sprintf(buf, "%08x", addr_curr);
-		// addr_curr += 0x10;
-		addr_curr += n;
-		// INFO("%x , x = %zu",addr_curr, x + 16 - buf_size);
+		addr_curr += n_line;
 		draw_string_unsafe(buf, buf_size, font_scale, x, y, 0x00FF00);
 	}
 }
 
-void draw_hex_space(int font_scale, int padding, char* hex, size_t hex_size, int n)
+void draw_hex_space(int font_scale, int padding, char* hex, size_t hex_size, int n_line)
 {
 	char buf[8];
-	size_t idx = scroll_y * n;
+	size_t idx = scroll_y;
 	int start_x = 2 * padding + (font_scale * 8 * 8);
 	int x, y;
 	int should_close = 0;
-	draw_rect(start_x - padding / 2, padding / 2, (n * (font_scale * 16 + padding) + padding*2), wnd.pixels.height - padding, 0x00AAFF);
+	draw_rect(start_x - padding / 2, padding / 2, (n_line * (font_scale * 16 + padding) + padding*2), wnd.pixels.height - padding, 0x00AAFF);
 	for (y = padding; y + font_scale * 8 < wnd.pixels.height; y += font_scale * 8)
 	{
 		int num_drawn = 0;
 		for (x = start_x; x + font_scale * 8 * 2 < wnd.pixels.width; x+= font_scale * 8 * 2 + padding)
 		{
 			int buf_size = sprintf(buf, "%02x", (u8_t)hex[idx]);
+			if (idx == selected_index) {
+				draw_string_unsafe(buf, buf_size, font_scale, x, y, 0x00FFFFF);
+			} else {
+				draw_string_unsafe(buf, buf_size, font_scale, x, y, 0x0000FF);
+			}
 			idx++;
 			num_drawn++;
-			draw_string_unsafe(buf, buf_size, font_scale, x, y, 0x0000FF);
 			
-			if (num_drawn >= n) {
+			if (num_drawn >= n_line) {
 				break;
 			}
 			if (idx >= hex_size)
@@ -191,25 +194,29 @@ void draw_hex_space(int font_scale, int padding, char* hex, size_t hex_size, int
 	}
 }
 
-void draw_ascii_space(int font_scale, int padding, char* hex, size_t hex_size, int n)
+void draw_ascii_space(int font_scale, int padding, char* hex, size_t hex_size, int n_line)
 {
 	char buf[8];
-	size_t idx = scroll_y * n;
-	int start_x = 2 * padding + (font_scale * 8 * 8) + (n * (font_scale * 16 + padding) + padding*2);
+	size_t idx = scroll_y;
+	int start_x = 2 * padding + (font_scale * 8 * ADDRESS_SIZE) + (n_line * (font_scale * 16 + padding));
 	int x, y;
 	int should_close = 0;
-	draw_rect(start_x - padding / 2, padding / 2, n * (font_scale * 8) + padding * 2, wnd.pixels.height - padding, 0x442121);
+	draw_rect(start_x - padding / 2, padding / 2, n_line * (font_scale * 8) + padding * 2, wnd.pixels.height - padding, 0x442121);
 	for (y = padding; y + font_scale * 8 < wnd.pixels.height; y += font_scale * 8)
 	{
 		int num_drawn = 0;
 		for (x = start_x; x + font_scale * 8 * 2 < wnd.pixels.width; x+= font_scale * 8)
 		{
 			int buf_size = sprintf(buf, "%c", (char)hex[idx]);
+			if (idx == selected_index) {
+				draw_string_unsafe(buf, buf_size, font_scale, x, y, 0xFFFFFF);
+			} else {
+				draw_string_unsafe(buf, buf_size, font_scale, x, y, 0xFF0000);
+			}
 			idx++;
 			num_drawn++;
-			draw_string_unsafe(buf, buf_size, font_scale, x, y, 0xFF0000);
 			
-			if (num_drawn >= n) {
+			if (num_drawn >= n_line) {
 				break;
 			}
 			if (idx >= hex_size)
@@ -223,24 +230,75 @@ void draw_ascii_space(int font_scale, int padding, char* hex, size_t hex_size, i
 	}
 }
 
+void draw_data_space(int font_scale, int padding, char c)
+{
+	int start_x = 2 * padding + (font_scale * 8 * 8) + (n_line * (font_scale * 16 + padding) + padding*2) + (n_line * (font_scale * 8) + padding * 2);
+	char buf[32];
+	int yc = 0, buf_size = -1;
+	buf_size = sprintf(buf, "%d", (i8_t)c);
+	draw_string_unsafe("8bit sint", -1, font_scale, start_x, (yc + 1) * padding + (yc * font_scale * 8), 0xFF0000); yc++;
+	draw_string_unsafe(buf, buf_size, font_scale, start_x, (yc + 1) * padding + (yc * font_scale * 8), 0xFF0000); yc++;
+	yc++;
+	buf_size = sprintf(buf, "%u", (u8_t)c);
+	draw_string_unsafe("8bit uint", -1, font_scale, start_x, (yc + 1) * padding + (yc * font_scale * 8), 0xFF0000); yc++;
+	draw_string_unsafe(buf, buf_size, font_scale, start_x, (yc + 1) * padding + (yc * font_scale * 8), 0xFF0000); yc++;
+	
+	
+}
+
+void update_selected()
+{
+	int sx, sy, sw, sh, mx, my;
+	sx = 2 * padding + (font_scale * 8 * 8);
+	sy = padding;
+	sw = n_line * (font_scale * 16 + padding) - padding;
+	sh = wnd.pixels.height - padding*2;
+	mx = wnd.mouse_x;
+	my = wnd.mouse_y;
+	printf("\n");
+	INFO("MOUSE  %d %d", mx, my);
+	INFO("BOUNDS %d %d %d %d", sx, sy, sw+sx, sh+sy);
+	if (mx >= sx && mx < sx + sw && my >= sy && my < sy + sh) {
+		INFO("WITHIN BOUNDS");
+		int cx = (mx - sx) / (font_scale * 16 + padding / 2);
+		int cy = (my - sy) / (font_scale * 8);
+		selected_index = cy * n_line + cx + scroll_y;
+		
+		INFO("CELL %d %d, INDEX %zu", cx, cy, selected_index);
+	}
+}
+
 void key_pressed_cb(struct window_context_t *_wnd, int key, int mods)
 {
-	switch(key)
-	{
+	switch(key) {
 	case IVY_KEY_ESCAPE:
 		_wnd->is_closed = 1;
 		break;
-	case IVY_KEY_BUTTON_4:
-		INFO("Scroll up");
-		scroll_y--;
-		
+
+	case IVY_KEY_BUTTON_1: {
+		update_selected();
+	} break;
+	
+
+	case IVY_KEY_PAGE_UP:
+		scroll_y -= n_column * n_line;
 		break;
+
+	case IVY_KEY_PAGE_DOWN:
+		scroll_y += n_column * n_line;
+		break;
+	
+	case IVY_KEY_UP:
+	case IVY_KEY_BUTTON_4:
+		scroll_y -= n_line;
+		break;
+
+	case IVY_KEY_DOWN:
 	case IVY_KEY_BUTTON_5:
-		INFO("Scroll down");
-		scroll_y+=100;
-		
+		scroll_y += n_line;
 		break;
 	}
+	// INFO("COLUMNS = %d", n_column);
 	(void) mods;
 }
 
@@ -256,18 +314,21 @@ int main(int argc, const char *argv[])
 	wnd = wnd_create(640, 480, "Hex Editor");
 	wnd.on_key_press = key_pressed_cb;
 	font = load_sprite("fonts.tga");
-	int font_scale = 2;
-	int padding = 10;
+	
 	while(!wnd_update(&wnd)) {
 		int avail_width = wnd.pixels.width - (font_scale * 8 * ADDRESS_SIZE + padding * 2) - (font_scale * 8 * 8 + padding * 2);
-		n = fmax(count_hex_per_line(font_scale, padding, avail_width), 1);
+		n_line = fmax(count_hex_per_line(font_scale, padding, avail_width), 1);
+		n_column = count_hex_per_column(font_scale, padding, wnd.pixels.height);
 		scroll_y = fmax(scroll_y, 0);
-		scroll_y = fmin(scroll_y, buf_size / n);
+		scroll_y = fmin(scroll_y, buf_size);
+		scroll_y = ((int)(scroll_y / n_line)) * n_line;
 		draw_rect(0, 0, wnd.pixels.width, wnd.pixels.height, 0x101018);
-		draw_address_space(font_scale, padding, n);
-		draw_hex_space(font_scale, padding, buf, buf_size, n);
-		draw_ascii_space(font_scale, padding, buf, buf_size, n);
+		draw_address_space(font_scale, padding, n_line);
+		draw_hex_space(font_scale, padding, buf, buf_size, n_line);
+		draw_ascii_space(font_scale, padding, buf, buf_size, n_line);
+
 		
+		draw_data_space(font_scale, padding, buf[selected_index]);
 	}
 	wnd_destroy(&wnd);
 }
